@@ -1,7 +1,7 @@
 <?php
 /* 
  * Plugin Name: Custom WP Update Source
- * Description: Redirects WordPress core, plugin, and theme updates and searches to a mirror when wp.org is not reachable.
+ * Description: Redirects WordPress core, plugin, and theme updates to a mirror when wp.org is not reachable.
  * Version: 1.0
  * Author: Blogvault
  */
@@ -21,12 +21,6 @@ class Custom_WP_Update_Source {
 
 		// Theme Updates
 		add_filter('pre_set_site_transient_update_themes', array($this, 'custom_check_theme_updates'), 10, 2);
-
-		// Override Plugins API Result
-		add_filter('plugins_api_result', array($this, 'custom_override_plugins_api_result'), 10, 3);
-
-		// Override Themes API Result
-		add_filter('themes_api_result', array($this, 'custom_override_themes_api_result'), 10, 3);
 	}
 
 	public function custom_check_core_updates($transient, $transient_name) {
@@ -113,45 +107,6 @@ class Custom_WP_Update_Source {
 		}
 
 		return $transient;
-	}
-
-	public function custom_override_plugins_api_result($result, $action, $args) {
-		if (is_wp_error($result) || empty($result->plugins)) {
-			$custom_result = $this->custom_fetch_from_mirror('plugins', $action, $args);
-			if ($custom_result) {
-				return $custom_result;
-			}
-		}
-		return $result;
-	}
-
-	public function custom_override_themes_api_result($result, $action, $args) {
-		if (is_wp_error($result) || empty($result->themes)) {
-			$custom_result = $this->custom_fetch_from_mirror('themes', $action, $args);
-			if ($custom_result) {
-				return $custom_result;
-			}
-		}
-		return $result;
-	}
-
-	private function custom_fetch_from_mirror($type, $action, $args) {
-		$url = $this->custom_mirror . "/{$type}-api/";
-		$body = array(
-			'action' => $action,
-			'request' => serialize($args)
-		);
-
-		$response = $this->make_request('POST', "/{$type}-api/", $body);
-
-		if ($response !== false) {
-			$data = json_decode(wp_remote_retrieve_body($response));
-			if ($data && !empty($data->{$type})) {
-				return $data;
-			}
-		}
-
-		return false;
 	}
 
 	private function make_request($method, $endpoint, $body = null) {
