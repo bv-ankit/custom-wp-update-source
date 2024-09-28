@@ -18,9 +18,11 @@ class Custom_WP_Update_Source {
 
 		// Plugin Updates
 		add_filter('pre_set_site_transient_update_plugins', array($this, 'custom_check_plugin_updates'), 10, 2);
+		add_filter('site_transient_update_plugins', array($this, 'merge_plugin_updates'), 10, 2);
 
 		// Theme Updates
 		add_filter('pre_set_site_transient_update_themes', array($this, 'custom_check_theme_updates'), 10, 2);
+		add_filter('site_transient_update_themes', array($this, 'merge_theme_updates'), 10, 2);
 	}
 
 	public function custom_check_core_updates($transient, $transient_name) {
@@ -31,6 +33,7 @@ class Custom_WP_Update_Source {
 				$data = json_decode(wp_remote_retrieve_body($response));
 				if ($data && !empty($data->updates)) {
 					$transient->updates = $data->updates;
+					update_option('custom_mirror_core_updates', $data->updates);
 				}
 			}
 		}
@@ -50,25 +53,38 @@ class Custom_WP_Update_Source {
 		$plugin_slugs = array();
 
 		foreach ($all_plugins as $plugin_file => $plugin_data) {
-			if (!isset($transient->response[$plugin_file])) {
-				$plugin_slug = dirname($plugin_file);
-				if ($plugin_slug === '.') {
-					$plugin_slug = basename($plugin_file, '.php');
+			$plugin_slug = dirname($plugin_file);
+			if ($plugin_slug === '.') {
+				$plugin_slug = basename($plugin_file, '.php');
+			}
+			$plugin_slugs[$plugin_file] = $plugin_slug;
+		}
+
+		$response = $this->make_request('POST', '/plugin-info-bulk/', json_encode($plugin_slugs));
+
+		if ($response !== false) {
+			$plugin_info_bulk = json_decode(wp_remote_retrieve_body($response), true);
+			update_option('custom_mirror_plugin_updates', $plugin_info_bulk);
+			foreach ($plugin_info_bulk as $plugin_file => $plugin_info) {
+				if ($plugin_info && isset($plugin_info['new_version'])) {
+					$transient->response[$plugin_file] = (object) $plugin_info;
 				}
-				$plugin_slugs[$plugin_file] = $plugin_slug;
 			}
 		}
 
-		if (!empty($plugin_slugs)) {
-			$response = $this->make_request('POST', '/plugin-info-bulk/', json_encode($plugin_slugs));
+		return $transient;
+	}
 
-			if ($response !== false) {
-				$plugin_info_bulk = json_decode(wp_remote_retrieve_body($response), true);
-				foreach ($plugin_info_bulk as $plugin_file => $plugin_info) {
-					if ($plugin_info && isset($plugin_info['new_version'])) {
-						$transient->response[$plugin_file] = (object) $plugin_info;
-					}
-				}
+	public function merge_plugin_updates($transient, $transient_name) {
+		if (!is_object($transient)) {
+			return $transient;
+		}
+
+		$mirror_updates = get_option('custom_mirror_plugin_updates', array());
+
+		foreach ($mirror_updates as $plugin_file => $plugin_info) {
+			if (!isset($transient->response[$plugin_file]) && isset($plugin_info['new_version'])) {
+				$transient->response[$plugin_file] = (object) $plugin_info;
 			}
 		}
 
@@ -88,21 +104,34 @@ class Custom_WP_Update_Source {
 		$theme_slugs = array();
 
 		foreach ($all_themes as $theme_slug => $theme) {
-			if (!isset($transient->response[$theme_slug])) {
-				$theme_slugs[] = $theme_slug;
+			$theme_slugs[] = $theme_slug;
+		}
+
+		$response = $this->make_request('POST', '/theme-info-bulk/', json_encode($theme_slugs));
+
+		if ($response !== false) {
+			$theme_info_bulk = json_decode(wp_remote_retrieve_body($response), true);
+			update_option('custom_mirror_theme_updates', $theme_info_bulk);
+			foreach ($theme_info_bulk as $theme_slug => $theme_info) {
+				if ($theme_info && isset($theme_info['new_version'])) {
+					$transient->response[$theme_slug] = $theme_info;
+				}
 			}
 		}
 
-		if (!empty($theme_slugs)) {
-			$response = $this->make_request('POST', '/theme-info-bulk/', json_encode($theme_slugs));
+		return $transient;
+	}
 
-			if ($response !== false) {
-				$theme_info_bulk = json_decode(wp_remote_retrieve_body($response), true);
-				foreach ($theme_info_bulk as $theme_slug => $theme_info) {
-					if ($theme_info && isset($theme_info['new_version'])) {
-						$transient->response[$theme_slug] = $theme_info;
-					}
-				}
+	public function merge_theme_updates($transient, $transient_name) {
+		if (!is_object($transient)) {
+			return $transient;
+		}
+
+		$mirror_updates = get_option('custom_mirror_theme_updates', array());
+
+		foreach ($mirror_updates as $theme_slug => $theme_info) {
+			if (!isset($transient->response[$theme_slug]) && isset($theme_info['new_version'])) {
+				$transient->response[$theme_slug] = $theme_info;
 			}
 		}
 
