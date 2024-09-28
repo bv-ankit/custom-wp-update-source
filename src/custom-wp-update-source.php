@@ -54,6 +54,10 @@ class Custom_WP_Update_Source {
 	}
 
 	public function custom_add_plugin_updates($transient, $transient_name) {
+		if (!function_exists('get_plugins')) {
+			return $transient;
+		}
+
 		if (!is_object($transient)) {
 			$transient = new stdClass();
 		}
@@ -62,9 +66,6 @@ class Custom_WP_Update_Source {
 			$transient->response = array();
 		}
 
-		if (!function_exists('get_plugins')) {
-			return $transient;
-		}
 		$all_plugins = get_plugins();
 
 		foreach ($all_plugins as $plugin_file => $plugin_data) {
@@ -101,6 +102,10 @@ class Custom_WP_Update_Source {
 	}
 
 	public function custom_add_theme_updates($transient, $transient_name) {
+		if (!function_exists('get_themes')) {
+			return $transient;
+		}
+
 		if (!is_object($transient)) {
 			$transient = new stdClass();
 		}
