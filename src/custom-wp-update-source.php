@@ -15,6 +15,7 @@ class Custom_WP_Update_Source {
 	public function __construct() {
 		// Core Updates
 		add_filter('pre_set_site_transient_update_core', array($this, 'custom_check_core_updates'), 10, 2);
+		add_filter('site_transient_update_core', array($this, 'merge_core_updates'), 10, 2);
 
 		// Plugin Updates
 		add_filter('pre_set_site_transient_update_plugins', array($this, 'custom_check_plugin_updates'), 10, 2);
@@ -36,6 +37,20 @@ class Custom_WP_Update_Source {
 				}
 			}
 		}
+		return $transient;
+	}
+
+	public function merge_core_updates($transient, $transient_name) {
+		if (!is_object($transient)) {
+			return $transient;
+		}
+
+		$mirror_updates = get_option('custom_mirror_core_updates', array());
+
+		if (!empty($mirror_updates) && empty($transient->updates)) {
+			$transient->updates = $mirror_updates;
+		}
+
 		return $transient;
 	}
 
@@ -71,7 +86,7 @@ class Custom_WP_Update_Source {
 
 	public function merge_plugin_updates($transient, $transient_name) {
 		if (!is_object($transient)) {
-			return $transient; #TODO: review
+			return $transient;
 		}
 
 		$mirror_updates = get_option('custom_mirror_plugin_updates', array());
