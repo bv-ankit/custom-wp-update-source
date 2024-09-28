@@ -1,7 +1,7 @@
 <?php
 /* 
  * Plugin Name: Custom WP Update Source
- * Description: Redirects WordPress core, plugin, and theme updates and searches to an mirror when wp.org is not reachable.
+ * Description: Redirects WordPress core, plugin, and theme updates and searches to a mirror when wp.org is not reachable.
  * Version: 1.0
  * Author: Blogvault
  */
@@ -10,45 +10,26 @@ if (!defined('ABSPATH')) { exit; }
 
 class Custom_WP_Update_Source {
 
-	/**
-	 * URL of the custom WordPress mirror.
-	 * @var string
-	 */
 	private $custom_mirror = 'https://wp-mirror.blogvault.net';
-
-	/**
-	 * Option name for storing the last successful request time.
-	 * @var string
-	 */
-	private $last_success_option = 'custom_wp_update_source_last_success';
 
 	public function __construct() {
 		// Core Updates
-		add_filter('site_transient_update_core', array($this, 'custom_add_core_updates'), 10, 2);
+		add_filter('pre_set_site_transient_update_core', array($this, 'custom_check_core_updates'), 10, 2);
 
 		// Plugin Updates
-		add_filter('site_transient_update_plugins', array($this, 'custom_add_plugin_updates'), 10, 2);
+		add_filter('pre_set_site_transient_update_plugins', array($this, 'custom_check_plugin_updates'), 10, 2);
 
 		// Theme Updates
-		add_filter('site_transient_update_themes', array($this, 'custom_add_theme_updates'), 10, 2);
+		add_filter('pre_set_site_transient_update_themes', array($this, 'custom_check_theme_updates'), 10, 2);
 
 		// Override Plugins API Result
 		add_filter('plugins_api_result', array($this, 'custom_override_plugins_api_result'), 10, 3);
 
 		// Override Themes API Result
 		add_filter('themes_api_result', array($this, 'custom_override_themes_api_result'), 10, 3);
-
-		// Schedule deactivation check
-		if (!wp_next_scheduled('custom_wp_update_source_check_deactivation')) {
-			wp_schedule_event(time(), 'hourly', 'custom_wp_update_source_check_deactivation');
-		}
-		add_action('custom_wp_update_source_check_deactivation', array($this, 'check_and_deactivate_if_needed'));
-
-		// Deactivation hook
-		register_deactivation_hook(__FILE__, array($this, 'on_deactivation'));
 	}
 
-	public function custom_add_core_updates($transient, $transient_name) {
+	public function custom_check_core_updates($transient, $transient_name) {
 		if (empty($transient->updates)) {
 			$response = $this->make_request('GET', '/core-update-check/');
 
@@ -62,11 +43,7 @@ class Custom_WP_Update_Source {
 		return $transient;
 	}
 
-	public function custom_add_plugin_updates($transient, $transient_name) {
-		if (!function_exists('get_plugins')) {
-			return $transient;
-		}
-
+	public function custom_check_plugin_updates($transient, $transient_name) {
 		if (!is_object($transient)) {
 			$transient = new stdClass();
 		}
@@ -104,11 +81,7 @@ class Custom_WP_Update_Source {
 		return $transient;
 	}
 
-	public function custom_add_theme_updates($transient, $transient_name) {
-		if (!function_exists('wp_get_themes')) {
-			return $transient;
-		}
-
+	public function custom_check_theme_updates($transient, $transient_name) {
 		if (!is_object($transient)) {
 			$transient = new stdClass();
 		}
@@ -201,31 +174,10 @@ class Custom_WP_Update_Source {
 		}
 
 		if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
-			update_option($this->last_success_option, time());
 			return $response;
 		}
 
 		return false;
-	}
-
-	public function check_and_deactivate_if_needed() {
-		$last_success = get_option($this->last_success_option, 0);
-		$current_time = time();
-
-		if ($current_time - $last_success > 48 * 60 * 60) { // 48 hours
-			$this->deactivate_plugin();
-		}
-	}
-
-	private function deactivate_plugin() {
-		$plugin_file = plugin_basename(__FILE__);
-		deactivate_plugins($plugin_file);
-		wp_die('Custom WP Update Source plugin has been deactivated due to failed requests for more than 48 hours.');
-	}
-
-	public function on_deactivation() {
-		wp_clear_scheduled_hook('custom_wp_update_source_check_deactivation');
-		delete_option($this->last_success_option);
 	}
 }
 
