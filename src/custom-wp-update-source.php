@@ -18,13 +18,13 @@ class Custom_WP_Update_Source {
 
 	public function __construct() {
 		// Core Updates
-		add_filter('site_transient_update_core', array($this, 'custom_add_core_updates'), 10, 1);
+		add_filter('site_transient_update_core', array($this, 'custom_add_core_updates'), 10, 2);
 
 		// Plugin Updates
-		add_filter('site_transient_update_plugins', array($this, 'custom_add_plugin_updates'), 10, 1);
+		add_filter('site_transient_update_plugins', array($this, 'custom_add_plugin_updates'), 10, 2);
 
 		// Theme Updates
-		add_filter('site_transient_update_themes', array($this, 'custom_add_theme_updates'), 10, 1);
+		add_filter('site_transient_update_themes', array($this, 'custom_add_theme_updates'), 10, 2);
 
 		// Override Plugins API Result
 		add_filter('plugins_api_result', array($this, 'custom_override_plugins_api_result'), 10, 3);
@@ -36,7 +36,7 @@ class Custom_WP_Update_Source {
 		add_filter('upgrader_package_options', array($this, 'custom_modify_package_options'), 10, 1);
 	}
 
-	public function custom_add_core_updates($transient) {
+	public function custom_add_core_updates($transient, $transient_name) {
 		if (empty($transient->updates)) {
 			$response = wp_remote_get($this->custom_mirror . '/core-update-check/', array(
 				'timeout'   => 15,
@@ -53,7 +53,7 @@ class Custom_WP_Update_Source {
 		return $transient;
 	}
 
-	public function custom_add_plugin_updates($transient) {
+	public function custom_add_plugin_updates($transient, $transient_name) {
 		if (!is_object($transient)) {
 			$transient = new stdClass();
 		}
@@ -63,7 +63,7 @@ class Custom_WP_Update_Source {
 		}
 
 		if (!function_exists('get_plugins')) {
-			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+			return $transient;
 		}
 		$all_plugins = get_plugins();
 
@@ -100,7 +100,7 @@ class Custom_WP_Update_Source {
 		return null;
 	}
 
-	public function custom_add_theme_updates($transient) {
+	public function custom_add_theme_updates($transient, $transient_name) {
 		if (!is_object($transient)) {
 			$transient = new stdClass();
 		}
