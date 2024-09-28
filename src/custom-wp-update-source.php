@@ -6,7 +6,7 @@
  * Author: Blogvault
  */
 
-if (!defined('ABSPATH')) { exit; // Exit if accessed directly }
+if (!defined('ABSPATH')) { exit; }
 
 class Custom_WP_Update_Source {
 
