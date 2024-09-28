@@ -39,7 +39,7 @@ class Custom_WP_Update_Source {
 	public function custom_add_core_updates($transient, $transient_name) {
 		if (empty($transient->updates)) {
 			$response = wp_remote_get($this->custom_mirror . '/core-update-check/', array(
-				'timeout'   => 15,
+				'timeout'   => 5,
 				'sslverify' => false,
 			));
 
@@ -67,12 +67,31 @@ class Custom_WP_Update_Source {
 		}
 
 		$all_plugins = get_plugins();
+		$plugin_slugs = array();
 
 		foreach ($all_plugins as $plugin_file => $plugin_data) {
 			if (!isset($transient->response[$plugin_file])) {
-				$plugin_info = $this->custom_fetch_plugin_info($plugin_file);
-				if ($plugin_info) {
-					$transient->response[$plugin_file] = $plugin_info;
+				$plugin_slug = dirname($plugin_file);
+				if ($plugin_slug === '.') {
+					$plugin_slug = basename($plugin_file, '.php');
+				}
+				$plugin_slugs[$plugin_file] = $plugin_slug;
+			}
+		}
+
+		if (!empty($plugin_slugs)) {
+			$response = wp_remote_post($this->custom_mirror . '/plugin-info-bulk/', array(
+				'body'      => json_encode($plugin_slugs),
+				'timeout'   => 5,
+				'sslverify' => false,
+			));
+
+			if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
+				$plugin_info_bulk = json_decode(wp_remote_retrieve_body($response), true);
+				foreach ($plugin_info_bulk as $plugin_file => $plugin_info) {
+					if ($plugin_info && isset($plugin_info['new_version'])) {
+						$transient->response[$plugin_file] = (object) $plugin_info;
+					}
 				}
 			}
 		}
@@ -80,29 +99,8 @@ class Custom_WP_Update_Source {
 		return $transient;
 	}
 
-	private function custom_fetch_plugin_info($plugin_file) {
-		$plugin_slug = dirname($plugin_file);
-		if ($plugin_slug === '.') {
-			$plugin_slug = basename($plugin_file, '.php');
-		}
-
-		$response = wp_remote_get($this->custom_mirror . '/plugin-info/' . $plugin_slug, array(
-			'timeout'   => 15,
-			'sslverify' => false,
-		));
-
-		if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
-			$plugin_info = json_decode(wp_remote_retrieve_body($response));
-			if ($plugin_info && isset($plugin_info->new_version)) {
-				return $plugin_info;
-			}
-		}
-
-		return null;
-	}
-
 	public function custom_add_theme_updates($transient, $transient_name) {
-		if (!function_exists('get_themes')) {
+		if (!function_exists('wp_get_themes')) {
 			return $transient;
 		}
 
@@ -115,33 +113,32 @@ class Custom_WP_Update_Source {
 		}
 
 		$all_themes = wp_get_themes();
+		$theme_slugs = array();
 
 		foreach ($all_themes as $theme_slug => $theme) {
 			if (!isset($transient->response[$theme_slug])) {
-				$theme_info = $this->custom_fetch_theme_info($theme_slug);
-				if ($theme_info) {
-					$transient->response[$theme_slug] = $theme_info;
+				$theme_slugs[] = $theme_slug;
+			}
+		}
+
+		if (!empty($theme_slugs)) {
+			$response = wp_remote_post($this->custom_mirror . '/theme-info-bulk/', array(
+				'body'      => json_encode($theme_slugs),
+				'timeout'   => 5,
+				'sslverify' => false,
+			));
+
+			if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
+				$theme_info_bulk = json_decode(wp_remote_retrieve_body($response), true);
+				foreach ($theme_info_bulk as $theme_slug => $theme_info) {
+					if ($theme_info && isset($theme_info['new_version'])) {
+						$transient->response[$theme_slug] = $theme_info;
+					}
 				}
 			}
 		}
 
 		return $transient;
-	}
-
-	private function custom_fetch_theme_info($theme_slug) {
-		$response = wp_remote_get($this->custom_mirror . '/theme-info/' . $theme_slug, array(
-			'timeout'   => 15,
-			'sslverify' => false,
-		));
-
-		if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
-			$theme_info = json_decode(wp_remote_retrieve_body($response));
-			if ($theme_info && isset($theme_info->new_version)) {
-				return $theme_info;
-			}
-		}
-
-		return null;
 	}
 
 	public function custom_override_plugins_api_result($result, $action, $args) {
@@ -173,7 +170,7 @@ class Custom_WP_Update_Source {
 
 		$response = wp_remote_post($url, array(
 			'body' => $body,
-			'timeout' => 15,
+			'timeout' => 5,
 			'sslverify' => false,
 		));
 
