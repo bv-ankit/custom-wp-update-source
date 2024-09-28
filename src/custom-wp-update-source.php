@@ -2,7 +2,7 @@
 /* 
  * Plugin Name: Custom WP Update Source
  * Description: Redirects WordPress core, plugin, and theme updates and searches to an mirror when wp.org is not reachable.
- * Version: 1.3
+ * Version: 1.0
  * Author: Blogvault
  */
 
