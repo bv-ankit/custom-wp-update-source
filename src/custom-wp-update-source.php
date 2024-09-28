@@ -2,7 +2,7 @@
 /* 
  * Plugin Name: Custom WP Update Source
  * Description: Redirects WordPress core, plugin, and theme updates and searches to an mirror when wp.org is not reachable.
- * Version: 1.2
+ * Version: 1.3
  * Author: Blogvault
  */
 
@@ -15,6 +15,12 @@ class Custom_WP_Update_Source {
 	 * @var string
 	 */
 	private $custom_mirror = 'https://wp-mirror.blogvault.net';
+
+	/**
+	 * Option name for storing the last successful request time.
+	 * @var string
+	 */
+	private $last_success_option = 'custom_wp_update_source_last_success';
 
 	public function __construct() {
 		// Core Updates
@@ -34,16 +40,22 @@ class Custom_WP_Update_Source {
 
 		// Modify Package Download URLs
 		add_filter('upgrader_package_options', array($this, 'custom_modify_package_options'), 10, 1);
+
+		// Schedule deactivation check
+		if (!wp_next_scheduled('custom_wp_update_source_check_deactivation')) {
+			wp_schedule_event(time(), 'hourly', 'custom_wp_update_source_check_deactivation');
+		}
+		add_action('custom_wp_update_source_check_deactivation', array($this, 'check_and_deactivate_if_needed'));
+
+		// Deactivation hook
+		register_deactivation_hook(__FILE__, array($this, 'on_deactivation'));
 	}
 
 	public function custom_add_core_updates($transient, $transient_name) {
 		if (empty($transient->updates)) {
-			$response = wp_remote_get($this->custom_mirror . '/core-update-check/', array(
-				'timeout'   => 5,
-				'sslverify' => false,
-			));
+			$response = $this->make_request('GET', '/core-update-check/');
 
-			if (!is_wp_error($response)) {
+			if ($response !== false) {
 				$data = json_decode(wp_remote_retrieve_body($response));
 				if ($data && !empty($data->updates)) {
 					$transient->updates = $data->updates;
@@ -80,13 +92,9 @@ class Custom_WP_Update_Source {
 		}
 
 		if (!empty($plugin_slugs)) {
-			$response = wp_remote_post($this->custom_mirror . '/plugin-info-bulk/', array(
-				'body'      => json_encode($plugin_slugs),
-				'timeout'   => 5,
-				'sslverify' => false,
-			));
+			$response = $this->make_request('POST', '/plugin-info-bulk/', json_encode($plugin_slugs));
 
-			if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
+			if ($response !== false) {
 				$plugin_info_bulk = json_decode(wp_remote_retrieve_body($response), true);
 				foreach ($plugin_info_bulk as $plugin_file => $plugin_info) {
 					if ($plugin_info && isset($plugin_info['new_version'])) {
@@ -122,13 +130,9 @@ class Custom_WP_Update_Source {
 		}
 
 		if (!empty($theme_slugs)) {
-			$response = wp_remote_post($this->custom_mirror . '/theme-info-bulk/', array(
-				'body'      => json_encode($theme_slugs),
-				'timeout'   => 5,
-				'sslverify' => false,
-			));
+			$response = $this->make_request('POST', '/theme-info-bulk/', json_encode($theme_slugs));
 
-			if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
+			if ($response !== false) {
 				$theme_info_bulk = json_decode(wp_remote_retrieve_body($response), true);
 				foreach ($theme_info_bulk as $theme_slug => $theme_info) {
 					if ($theme_info && isset($theme_info['new_version'])) {
@@ -168,13 +172,9 @@ class Custom_WP_Update_Source {
 			'request' => serialize($args)
 		);
 
-		$response = wp_remote_post($url, array(
-			'body' => $body,
-			'timeout' => 5,
-			'sslverify' => false,
-		));
+		$response = $this->make_request('POST', "/{$type}-api/", $body);
 
-		if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
+		if ($response !== false) {
 			$data = json_decode(wp_remote_retrieve_body($response));
 			if ($data && !empty($data->{$type})) {
 				return $data;
@@ -210,6 +210,46 @@ class Custom_WP_Update_Source {
 		return $options;
 	}
 
+	private function make_request($method, $endpoint, $body = null) {
+		$args = array(
+			'method' => $method,
+			'timeout' => 5,
+			'sslverify' => false,
+		);
+
+		if ($body !== null) {
+			$args['body'] = $body;
+		}
+
+		$response = wp_remote_request($this->custom_mirror . $endpoint, $args);
+
+		if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
+			update_option($this->last_success_option, time());
+			return $response;
+		}
+
+		return false;
+	}
+
+	public function check_and_deactivate_if_needed() {
+		$last_success = get_option($this->last_success_option, 0);
+		$current_time = time();
+
+		if ($current_time - $last_success > 48 * 60 * 60) { // 48 hours
+			$this->deactivate_plugin();
+		}
+	}
+
+	private function deactivate_plugin() {
+		$plugin_file = plugin_basename(__FILE__);
+		deactivate_plugins($plugin_file);
+		wp_die('Custom WP Update Source plugin has been deactivated due to failed requests for more than 48 hours.');
+	}
+
+	public function on_deactivation() {
+		wp_clear_scheduled_hook('custom_wp_update_source_check_deactivation');
+		delete_option($this->last_success_option);
+	}
 }
 
 new Custom_WP_Update_Source();
