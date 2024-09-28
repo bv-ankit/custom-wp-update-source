@@ -32,7 +32,6 @@ class Custom_WP_Update_Source {
 			if ($response !== false) {
 				$data = json_decode(wp_remote_retrieve_body($response));
 				if ($data && !empty($data->updates)) {
-					$transient->updates = $data->updates;
 					update_option('custom_mirror_core_updates', $data->updates);
 				}
 			}
@@ -65,11 +64,6 @@ class Custom_WP_Update_Source {
 		if ($response !== false) {
 			$plugin_info_bulk = json_decode(wp_remote_retrieve_body($response), true);
 			update_option('custom_mirror_plugin_updates', $plugin_info_bulk);
-			foreach ($plugin_info_bulk as $plugin_file => $plugin_info) {
-				if ($plugin_info && isset($plugin_info['new_version'])) {
-					$transient->response[$plugin_file] = (object) $plugin_info;
-				}
-			}
 		}
 
 		return $transient;
@@ -77,7 +71,7 @@ class Custom_WP_Update_Source {
 
 	public function merge_plugin_updates($transient, $transient_name) {
 		if (!is_object($transient)) {
-			return $transient;
+			return $transient; #TODO: review
 		}
 
 		$mirror_updates = get_option('custom_mirror_plugin_updates', array());
@@ -112,11 +106,6 @@ class Custom_WP_Update_Source {
 		if ($response !== false) {
 			$theme_info_bulk = json_decode(wp_remote_retrieve_body($response), true);
 			update_option('custom_mirror_theme_updates', $theme_info_bulk);
-			foreach ($theme_info_bulk as $theme_slug => $theme_info) {
-				if ($theme_info && isset($theme_info['new_version'])) {
-					$transient->response[$theme_slug] = $theme_info;
-				}
-			}
 		}
 
 		return $transient;
