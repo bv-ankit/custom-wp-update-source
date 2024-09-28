@@ -38,9 +38,6 @@ class Custom_WP_Update_Source {
 		// Override Themes API Result
 		add_filter('themes_api_result', array($this, 'custom_override_themes_api_result'), 10, 3);
 
-		// Modify Package Download URLs
-		add_filter('upgrader_package_options', array($this, 'custom_modify_package_options'), 10, 1);
-
 		// Schedule deactivation check
 		if (!wp_next_scheduled('custom_wp_update_source_check_deactivation')) {
 			wp_schedule_event(time(), 'hourly', 'custom_wp_update_source_check_deactivation');
@@ -184,37 +181,11 @@ class Custom_WP_Update_Source {
 		return false;
 	}
 
-	public function custom_modify_package_options($options) {
-		if (isset($options['package'])) {
-			$original_url = $options['package'];
-
-			// Modify plugin download URLs
-			$options['package'] = str_replace(
-				'https://downloads.wordpress.org/plugin/',
-				trailingslashit($this->custom_mirror) . 'plugins/',
-				$options['package']
-			);
-
-			// Modify theme download URLs
-			$options['package'] = str_replace(
-				'https://downloads.wordpress.org/theme/',
-				trailingslashit($this->custom_mirror) . 'themes/',
-				$options['package']
-			);
-
-			// If the URL was changed, add it to the hook extra
-			if ($original_url !== $options['package']) {
-				$options['hook_extra']['custom_source'] = true;
-			}
-		}
-		return $options;
-	}
-
 	private function make_request($method, $endpoint, $body = null) {
 		$args = array(
 			'method' => $method,
 			'timeout' => 5,
-			'sslverify' => false,
+			'sslverify' => true,
 		);
 
 		if ($body !== null) {
@@ -222,6 +193,12 @@ class Custom_WP_Update_Source {
 		}
 
 		$response = wp_remote_request($this->custom_mirror . $endpoint, $args);
+
+		if (is_wp_error($response) && strpos($response->get_error_message(), 'SSL certificate problem') !== false) {
+			// If SSL fails, try without SSL verification
+			$args['sslverify'] = false;
+			$response = wp_remote_request($this->custom_mirror . $endpoint, $args);
+		}
 
 		if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
 			update_option($this->last_success_option, time());
