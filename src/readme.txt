@@ -13,19 +13,11 @@ Redirects WordPress core, plugin, and theme updates and searches to a mirror whe
 
 Custom WP Update Source is a plugin that provides an alternative source for WordPress updates when the official WordPress.org servers are not accessible. It redirects update checks and downloads to a custom mirror server, ensuring that your WordPress site can still receive important updates even when WordPress.org is down or unreachable. This is especially useful for sites that need security updates but cannot reach the official WordPress.org servers.
 
-Features:
-
-* Redirects core WordPress updates
-* Redirects plugin updates
-* Redirects theme updates
-* Overrides plugin and theme API results
-* Automatically deactivates after 48 hours of failed requests
-
 == Frequently Asked Questions ==
 
-= What happens if the mirror server is also unavailable? =
+= Does this replace the official WordPress update system? =
 
-If the mirror server is unavailable for more than 48 hours, the plugin will automatically deactivate itself to ensure your site can fall back to the official WordPress.org servers.
+No, this plugin acts as a fallback when the official WordPress.org servers are not reachable. It will only provide updates from the custom mirror if WordPress.org is inaccessible.
 
 == Changelog ==
 
@@ -47,16 +39,9 @@ The mirror server should implement the following endpoints:
    - Accepts JSON array of theme slugs
    - Returns JSON object with theme update information for each slug
 
-4. POST /plugins-api/
-   - Accepts 'action' and 'request' parameters
-   - Returns JSON object mimicking the WordPress.org plugins API response
-
-5. POST /themes-api/
-   - Accepts 'action' and 'request' parameters
-   - Returns JSON object mimicking the WordPress.org themes API response
-
 The mirror server should also host plugin and theme ZIP files at:
-- /plugins/{plugin-slug}.zip
-- /themes/{theme-slug}.zip
+- /core/{version}.zip
+- /plugins/{plugin-slug}/{version}.zip
+- /themes/{theme-slug}/{version}.zip
 
 Ensure all endpoints return appropriate HTTP status codes and handle errors gracefully.
